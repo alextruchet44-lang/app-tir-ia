@@ -1,43 +1,64 @@
-import sys
-import os
-
-# --- Permet à Python de trouver analyse_ia.py dans le dossier parent ---
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# -----------------------------------------------------------------------
-
 from fastapi import FastAPI, UploadFile, File
-from analyse_ia import analyser_cible
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import shutil
+import cv2
+import numpy as np
 
 app = FastAPI()
 
-@app.post("/analyser")
-async def analyser_carton(file: UploadFile = File(...)):
-    # Sauvegarde temporaire de l'image envoyée
-    temp_path = f"temp_{file.filename}"
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+# CORS (important pour Flutter)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    # Analyse IA
-    session = analyser_cible(temp_path)
+# 🔥 Route obligatoire pour Render (sinon Render coupe ton service)
+@app.get("/")
+def home():
+    return {"status": "API OK", "message": "Service en ligne et opérationnel"}
 
-    # Suppression du fichier temporaire
-    os.remove(temp_path)
+# 🔥 Route d'analyse (celle que ton app Flutter appelle)
+@app.post("/analyze")
+async def analyze_image(file: UploadFile = File(...)):
+    # Lecture du fichier envoyé
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    if session is None:
-        return {"success": False, "message": "Analyse impossible"}
+    if img is None:
+        return {"error": "Impossible de lire l'image"}
 
-    # Conversion en JSON
+    # ---------------------------------------------------------
+    # 🔥 Exemple d'analyse (à remplacer par ton vrai traitement)
+    # ---------------------------------------------------------
+
+    height, width = img.shape[:2]
+
+    # Exemple : centre fictif
+    center = {"x": width / 2, "y": height / 2}
+
+    # Exemple : un impact fictif
+    shots = [
+        {"x": width * 0.4, "y": height * 0.6, "score": 8.5},
+        {"x": width * 0.55, "y": height * 0.45, "score": 9.2},
+    ]
+
+    # Exemple : score total
+    total_score = sum(s["score"] for s in shots)
+
+    # Exemple : groupement fictif
+    grouping = 12.7
+
     return {
-        "success": True,
-        "score_total": session.score_total(),
-        "impacts": session.impacts,
-        "calibre": session.calibre,
-        "distance": session.distance,
-        "nb_impacts": session.nombre_impacts(),
+        "center": center,
+        "shots": shots,
+        "total_score": total_score,
+        "grouping": grouping,
     }
 
+# 🔥 Lancement local (ne sert pas sur Render)
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
